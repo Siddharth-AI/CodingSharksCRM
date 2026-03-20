@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modal Debug Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="p-8">
+        <h1 class="text-2xl font-bold mb-4">Modal Debug Test</h1>
+        <button id="openModal" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+            Open Modal
+        </button>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="fixed inset-0 z-50 overflow-y-auto hidden">
+        <!-- Backdrop -->
+        <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"></div>
+        
+        <!-- Modal -->
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="relative bg-white rounded-lg shadow-xl w-full max-w-lg transform transition-all">
+                <!-- Header -->
+                <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">Test Modal</h3>
+                    <button id="closeModal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Content -->
+                <div class="px-6 py-4">
+                    <p class="text-gray-600">This is a test modal to verify that modals are working correctly.</p>
+                    <div class="mt-4 space-y-4">
+                        <input type="text" placeholder="Test input" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        <select class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                            <option>Test option 1</option>
+                            <option>Test option 2</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end space-x-3 pt-4">
+                        <button id="cancelBtn" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const modal = document.getElementById('modal');
+        const openBtn = document.getElementById('openModal');
+        const closeBtn = document.getElementById('closeModal');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        openBtn.addEventListener('click', () => {
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        });
+
+        const closeModal = () => {
+            modal.classList.add('hidden');
+            document.body.style.overflow = 'unset';
+        };
+
+        closeBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+        
+        // Close on backdrop click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
