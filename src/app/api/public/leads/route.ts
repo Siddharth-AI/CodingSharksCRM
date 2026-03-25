@@ -101,15 +101,15 @@ export async function POST(request: NextRequest) {
       created_at:  new Date().toISOString(),
     });
 
-    // ── Fire-and-forget auto-welcome ──────────────────────────────────────────
-    sendAutoWelcomeMessage(newLead).catch(err =>
-      console.error('Auto-welcome failed for external lead', newLead.id, ':', err?.message || err)
-    );
-
-    // ── Fire-and-forget owner notification ────────────────────────────────────
-    notifyOwner(newLead).catch(err =>
-      console.error('Owner notification failed for lead', newLead.id, ':', err?.message || err)
-    );
+    // ── Auto-welcome + owner notification (awaited — Vercel kills fire-and-forget) ──
+    await Promise.allSettled([
+      sendAutoWelcomeMessage(newLead).catch(err =>
+        console.error('Auto-welcome failed for external lead', newLead.id, ':', err?.message || err)
+      ),
+      notifyOwner(newLead).catch(err =>
+        console.error('Owner notification failed for lead', newLead.id, ':', err?.message || err)
+      ),
+    ]);
 
     return NextResponse.json({
       success: true,

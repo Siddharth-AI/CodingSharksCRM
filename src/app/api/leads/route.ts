@@ -237,8 +237,8 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
       });
 
-    // Fire-and-forget auto-welcome — never blocks lead creation
-    sendAutoWelcomeMessage(newLead).catch(err =>
+    // Awaited — Vercel kills fire-and-forget after response
+    await sendAutoWelcomeMessage(newLead).catch(err =>
       console.error('Auto-welcome failed for lead', newLead.id, ':', err?.message || err)
     );
 

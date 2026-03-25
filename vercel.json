@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "src/app/api/public/leads/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/leads/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
