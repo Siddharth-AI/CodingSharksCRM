@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cloudinary } from '@/lib/cloudinary';
+import { supabaseAdmin } from '@/lib/supabase';
 import { authenticateApiRequest } from '@/middleware/authMiddleware';
 import { handleApiError } from '@/utils/apiErrorHandling';
 
 /**
- * POST /api/upload - Upload image or video to Cloudinary
+ * POST /api/upload - Upload image or video to Cloudinary and log to media_assets
  * Body: multipart/form-data  { file: File, type: 'image' | 'video' }
+ * 
+ * Also saves a record to media_assets table for reuse across templates
  */
 export async function POST(request: NextRequest) {
   try {
@@ -50,7 +53,14 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload to Cloudinary
-    const result = await new Promise<{ secure_url: string; public_id: string; resource_type: string }>((resolve, reject) => {
+    const result = await new Promise<{
+      secure_url: string;
+      public_id: string;
+      resource_type: string;
+      width?: number;
+      height?: number;
+      duration?: number;
+    }>((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: type as 'image' | 'video',
@@ -61,18 +71,43 @@ export async function POST(request: NextRequest) {
         },
         (error, result) => {
           if (error) reject(error);
-          else resolve(result as { secure_url: string; public_id: string; resource_type: string });
+          else resolve(result as any);
         }
       );
       uploadStream.end(buffer);
     });
 
+    // Save to media_assets table for reuse
+    const userId = authResult.userId;
+    const { data: mediaRecord, error: dbError } = await supabaseAdmin
+      .from('media_assets')
+      .insert({
+        type,
+        url: result.secure_url,
+        public_id: result.public_id,
+        file_name: file.name,
+        file_size_bytes: file.size,
+        mime_type: file.type,
+        width: result.width,
+        height: result.height,
+        duration_seconds: result.duration,
+        uploaded_by: userId,
+      })
+      .select()
+      .single();
+
+    if (dbError) {
+      console.error('Failed to save media asset to database:', dbError);
+      // Don't fail the upload if DB save fails - file is already uploaded to Cloudinary
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        url:          result.secure_url,
-        publicId:     result.public_id,
+        url: result.secure_url,
+        publicId: result.public_id,
         resourceType: result.resource_type,
+        mediaId: mediaRecord?.id,
       },
     });
 
