@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Save to media_assets table for reuse
-    const userId = authResult.userId;
+    const userId = authResult.user?.id;
     const { data: mediaRecord, error: dbError } = await supabaseAdmin
       .from('media_assets')
       .insert({
