@@ -48,13 +48,39 @@ export async function POST(request: NextRequest) {
 
     const formattedMobile = formatMobileNumber(value.mobile);
 
-    // ── Check duplicates (informational only — we still create) ───────────────
-    const { data: existingLeads } = await supabaseAdmin
+    // ── Dedup check by mobile ────────────────────────────────────────────────
+    const { data: existingLead } = await supabaseAdmin
       .from('leads')
-      .select('id, name, email, mobile')
-      .eq('mobile', formattedMobile);
+      .select('id, name, email, mobile, course_interest, stage, source, notes, created_at, updated_at')
+      .eq('mobile', formattedMobile)
+      .maybeSingle();
 
-    // ── Insert lead ───────────────────────────────────────────────────────────
+    // ── Existing lead: log touch only, no insert, no welcome ────────────────
+    if (existingLead) {
+      await supabaseAdmin.from('activities').insert({
+        lead_id:     existingLead.id,
+        type:        'lead_touch',
+        description: `Repeat submit via external form: ${value.name} (${value.email})`,
+        metadata:    {
+          source: 'codingshark_website',
+          courseInterest: value.courseInterest,
+          submittedName: value.name,
+          submittedEmail: value.email.toLowerCase(),
+          ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+          userAgent: request.headers.get('user-agent') || null,
+        },
+        created_at:  new Date().toISOString(),
+      });
+
+      return NextResponse.json({
+        success: true,
+        data:    { leadId: existingLead.id, isNewLead: false },
+        message: 'Lead already exists',
+        error:   null,
+      }, { status: 200 });
+    }
+
+    // ── Insert new lead ───────────────────────────────────────────────────────
     const { data, error: insertError } = await supabaseAdmin
       .from('leads')
       .insert({
@@ -101,7 +127,7 @@ export async function POST(request: NextRequest) {
       created_at:  new Date().toISOString(),
     });
 
-    // ── Auto-welcome + owner notification (awaited — Vercel kills fire-and-forget) ──
+    // ── Auto-welcome + owner notification — only for NEW leads ───────────────
     await Promise.allSettled([
       sendAutoWelcomeMessage(newLead).catch(err =>
         console.error('Auto-welcome failed for external lead', newLead.id, ':', err?.message || err)
@@ -113,11 +139,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data:    { id: newLead.id, name: newLead.name },   // minimal response — don't expose all lead data
+      data:    { leadId: newLead.id, isNewLead: true },
       message: 'Lead created successfully',
-      ...(existingLeads && existingLeads.length > 0 && {
-        warning: `${existingLeads.length} existing lead(s) found with this mobile number`,
-      }),
+      error:   null,
     }, { status: 201 });
 
   } catch (err) {
