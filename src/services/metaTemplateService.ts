@@ -247,7 +247,7 @@ export function buildSendComponents(
       type: 'body',
       parameters: params.map(p => ({
         type: 'text' as const,
-        parameter_name: p,
+        ...(/^\d+$/.test(p) ? {} : { parameter_name: p }),
         text: (lowerValues[p] ?? '').toString().trim() || '-',
       })),
     });

@@ -146,6 +146,7 @@ export default function TemplatesPage() {
                 { value: 'follow_up_day_1', label: 'Follow-up Day 1' },
                 { value: 'follow_up_day_2', label: 'Follow-up Day 2' },
                 { value: 'follow_up_day_3', label: 'Follow-up Day 3' },
+                { value: 'custom', label: 'Custom / imported from WhatsApp' },
               ]}
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}

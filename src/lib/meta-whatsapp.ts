@@ -178,6 +178,13 @@ export async function editTemplate(
   return graph(`/${metaTemplateId}`, { method: 'POST', body: definition });
 }
 
+export interface MetaTemplateComponent {
+  type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
+  format?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'LOCATION';
+  text?: string;
+  buttons?: Array<{ type: string; text?: string; url?: string }>;
+}
+
 export interface MetaTemplateRecord {
   id: string;
   name: string;
@@ -185,12 +192,14 @@ export interface MetaTemplateRecord {
   status: string;
   category: string;
   rejected_reason?: string;
+  parameter_format?: 'NAMED' | 'POSITIONAL';
+  components?: MetaTemplateComponent[];
 }
 
 export async function listTemplates(): Promise<MetaTemplateRecord[]> {
   const { wabaId } = config();
   const out: MetaTemplateRecord[] = [];
-  let next: string | undefined = `/${wabaId}/message_templates?fields=id,name,language,status,category,rejected_reason&limit=100`;
+  let next: string | undefined = `/${wabaId}/message_templates?fields=id,name,language,status,category,rejected_reason,parameter_format,components&limit=100`;
   while (next) {
     const page: { data: MetaTemplateRecord[]; paging?: { next?: string } } = await graph(next);
     out.push(...(page.data || []));
