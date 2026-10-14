@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useGetConversationsQuery } from '@/store/api';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -11,10 +12,13 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const { data: inboxData } = useGetConversationsQuery(undefined, { pollingInterval: 30000 });
+  const unreadCount = inboxData?.meta?.totalUnread || 0;
   
   const menuItems = [
     { href: '/dashboard', label: 'Dashboard', icon: '📊' },
     { href: '/leads', label: 'Leads', icon: '👥' },
+    { href: '/inbox', label: 'Inbox', icon: '📥' },
     { href: '/courses', label: 'Courses', icon: '📚' },
     { href: '/messages', label: 'Messages', icon: '💬' },
     { href: '/templates', label: 'Templates', icon: '📝' },
@@ -70,6 +74,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             >
               <span className="text-xl">{item.icon}</span>
               <span>{item.label}</span>
+              {item.href === '/inbox' && unreadCount > 0 && (
+                <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-green-500 text-white text-xs font-semibold flex items-center justify-center">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>

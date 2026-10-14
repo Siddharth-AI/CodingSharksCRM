@@ -1,166 +1,133 @@
-import axios from 'axios';
-import { MessageStatus } from '@/types';
+import { MessageStatus, MessageTemplate, Lead, Course } from '@/types';
 import { supabaseAdmin } from '@/lib/supabase';
+import { sendText, sendTemplate, toWaPhone, MetaApiError, OUTSIDE_WINDOW_ERROR_CODE } from '@/lib/meta-whatsapp';
+import { buildSendComponents, fromTemplateRow } from '@/services/metaTemplateService';
+import { getTemplateVariableValues, processTemplate } from '@/utils/templateUtils';
 
-/**
- * Wapmonkey WhatsApp API Service
- * POST https://api.wapmonkey.com/v1/sendmessage
- *
- * Exact request body format (from Wapmonkey docs):
- *   message:      "your message"
- *   numbers:      "919876543210"        ← single string, digits only
- *   device_token: "your_device_token"
- *   delay:        2                     ← 0–10 seconds (optional)
- *   schedule:     "2026-03-20T10:00:00Z" ← UTC ISO string (optional)
- *   media:        [{ url|mediaId, caption, name }] (optional)
- *
- * Headers:
- *   Authorization: <API_KEY>   ← no "Bearer" prefix
- *   Content-Type:  application/json
- */
-
-interface WapmonkeyMedia {
-  url?:     string;    // public URL of the media file
-  mediaId?: string;    // Wapmonkey-hosted media ID (use instead of url)
+interface LegacyMedia {
+  url?:     string;
+  mediaId?: string;
   caption?: string;
   name?:    string;
 }
 
-interface WapmonkeyRequestBody {
-  message:      string;
-  numbers:      string;    // single phone number — digits only with country code
-  device_token: string;
-  delay?:       number;    // 0–10 seconds
-  schedule?:    string;    // UTC ISO datetime
-  media?:       WapmonkeyMedia[];
+interface SendOptions {
+  leadId?: string;
+  templateId?: string;
+  scheduledAt?: Date | string;
+  retryCount?: number;
+  media?: LegacyMedia[];
+  mediaImageUrl?: string;
+  mediaVideoUrl?: string;
+  existingMessageId?: string;
 }
 
-interface WapmonkeyResponse {
-  status:      number | boolean;  // Wapmonkey returns 1 (number), not true (boolean)
-  description?: string;           // success/failure description
-  message?:    string;            // fallback field
-  data?:       Record<string, unknown>;
+export interface SendResult {
+  success: boolean;
+  messageId?: string;
+  waMessageId?: string;
+  wapmonkeyMessageId?: string;
+  error?: string;
+  outsideWindow?: boolean;
+}
+
+const OUTSIDE_WINDOW_MESSAGE =
+  'This contact has not messaged you in the last 24 hours, so WhatsApp only allows an approved template. Send a template instead.';
+
+function describeError(err: unknown): { message: string; outsideWindow: boolean } {
+  if (err instanceof MetaApiError) {
+    if (err.code === OUTSIDE_WINDOW_ERROR_CODE) return { message: OUTSIDE_WINDOW_MESSAGE, outsideWindow: true };
+    return { message: err.details ? `${err.message}: ${err.details}` : err.message, outsideWindow: false };
+  }
+  return { message: (err as Error)?.message || 'Unknown error', outsideWindow: false };
 }
 
 export class WhatsAppService {
-  private readonly apiKey: string;
-  private readonly deviceToken: string;
-  private readonly baseUrl: string;
-
-  constructor() {
-    this.apiKey = process.env.WAPMONKEY_API_KEY || '';
-    this.deviceToken = process.env.WAPMONKEY_DEVICE_TOKEN || '';
-    this.baseUrl = process.env.WAPMONKEY_BASE_URL || 'https://api.wapmonkey.com/v1';
-  }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   /**
    * Send a message (plain text or processed template) to a single phone number.
    */
-  async sendTextMessage(
-    to: string,
-    message: string,
-    options: {
-      leadId?: string;
-      templateId?: string;
-      scheduledAt?: Date | string;
-      retryCount?: number;
-      media?: WapmonkeyMedia[];
-      mediaImageUrl?: string;
-      mediaVideoUrl?: string;
-    } = {}
-  ): Promise<{
-    success: boolean;
-    messageId?: string;
-    wapmonkeyMessageId?: string;
-    error?: string;
-  }> {
-    // Wapmonkey needs digits-only with country code, no "+"
-    const phone = this.formatPhone(to);
-
-    const body: WapmonkeyRequestBody = {
-      message,
-      numbers: phone,
-      device_token: this.deviceToken,
-      ...(options.scheduledAt ? { schedule: new Date(options.scheduledAt).toISOString() } : {}),
-      ...(options.media ? { media: options.media } : {}),
-    };
-
-    console.log('Wapmonkey request →', JSON.stringify({ url: `${this.baseUrl}/sendmessage`, phone, body: { ...body, message: body.message.substring(0, 80) } }, null, 2));
-
+  async sendTextMessage(to: string, message: string, options: SendOptions = {}): Promise<SendResult> {
     try {
-      const resp = await axios.post<WapmonkeyResponse>(
-        `${this.baseUrl}/sendmessage`,
-        body,
-        {
-          headers: {
-            Authorization: this.apiKey,   // no "Bearer" prefix for Wapmonkey
-            'Content-Type': 'application/json',
-          },
-          timeout: 30_000,
-        }
-      );
-
-      console.log('Wapmonkey response ←', resp.status, resp.data);
-
-      // Wapmonkey returns status:1 (number) on success, not boolean true
-      const ok = !!resp.data?.status;
-      const wapmonkeyMessageId = String(
-        resp.data?.data?.messageId ||   // actual Wapmonkey field name
-        resp.data?.data?.id        ||
-        ''
-      );
-      // Wapmonkey uses "description" field, not "message"
-      const apiMessage = resp.data?.description || resp.data?.message || '';
-
+      const waMessageId = await sendText(to, message);
       const record = await this.storeMessage({
-        leadId:        options.leadId,
-        templateId:    options.templateId,
-        content:       message,
-        status:        ok ? MessageStatus.SENT : MessageStatus.FAILED,
-        errorMessage:  ok ? undefined : apiMessage,
-        retryCount:    options.retryCount || 0,
-        mediaImageUrl: options.mediaImageUrl,
-        mediaVideoUrl: options.mediaVideoUrl,
+        ...options,
+        phone: to,
+        content: message,
+        status: MessageStatus.SENT,
+        messageType: 'text',
+        waMessageId,
       });
-
-      if (!ok) {
-        return { success: false, error: apiMessage || 'Wapmonkey returned failure status' };
-      }
-
-      return { success: true, messageId: record.id, wapmonkeyMessageId };
-
-    } catch (err: unknown) {
-      // Capture the full Wapmonkey error response body, not just the axios message
-      type AxiosErr = { response?: { status?: number; data?: unknown }; message?: string };
-      const e = err as AxiosErr;
-      const resData = e?.response?.data;
-      const resStatus = e?.response?.status;
-
-      let errMsg: string;
-      if (resData && typeof resData === 'object') {
-        errMsg = (resData as Record<string, unknown>).message as string
-          || JSON.stringify(resData);
-      } else {
-        errMsg = e?.message || 'Unknown error';
-      }
-
-      console.error(`Wapmonkey error [${resStatus}]:`, resData || errMsg);
-
+      return { success: true, messageId: record?.id, waMessageId, wapmonkeyMessageId: waMessageId };
+    } catch (err) {
+      const { message: errMsg, outsideWindow } = describeError(err);
+      console.error('WhatsApp text send failed:', errMsg);
       if (options.leadId) {
         await this.storeMessage({
-          leadId: options.leadId,
-          templateId: options.templateId,
+          ...options,
+          phone: to,
           content: message,
           status: MessageStatus.FAILED,
+          messageType: 'text',
           errorMessage: errMsg,
-          retryCount: options.retryCount || 0,
-        }).catch(storeErr => console.error('Failed to store failed message:', storeErr));
+        });
       }
+      return { success: false, error: errMsg, outsideWindow };
+    }
+  }
 
+  async sendTemplateMessage(
+    to: string,
+    template: MessageTemplate,
+    values: Record<string, string>,
+    renderedContent: string,
+    options: Pick<SendOptions, 'leadId' | 'retryCount' | 'existingMessageId'> = {}
+  ): Promise<SendResult> {
+    const base = {
+      ...options,
+      templateId: template.id,
+      phone: to,
+      content: renderedContent,
+      messageType: 'template',
+      mediaImageUrl: template.metaHeaderFormat === 'IMAGE' ? template.mediaImageUrl : undefined,
+      mediaVideoUrl: template.metaHeaderFormat === 'VIDEO' ? template.mediaVideoUrl : undefined,
+    };
+
+    if (template.metaStatus !== 'APPROVED' || !template.metaName) {
+      const errMsg = `Template "${template.name}" is not approved on WhatsApp yet (status: ${template.metaStatus || 'not submitted'}).`;
+      if (options.leadId) await this.storeMessage({ ...base, status: MessageStatus.FAILED, errorMessage: errMsg });
       return { success: false, error: errMsg };
     }
+
+    try {
+      const waMessageId = await sendTemplate(
+        to,
+        template.metaName,
+        template.metaLanguage || 'en',
+        buildSendComponents(template, values)
+      );
+      const record = await this.storeMessage({ ...base, status: MessageStatus.SENT, waMessageId });
+      return { success: true, messageId: record?.id, waMessageId, wapmonkeyMessageId: waMessageId };
+    } catch (err) {
+      const { message: errMsg } = describeError(err);
+      console.error('WhatsApp template send failed:', errMsg);
+      if (options.leadId) await this.storeMessage({ ...base, status: MessageStatus.FAILED, errorMessage: errMsg });
+      return { success: false, error: errMsg };
+    }
+  }
+
+  async sendTemplateToLead(
+    lead: Lead,
+    template: MessageTemplate,
+    course?: Course,
+    additionalVariables?: Record<string, string>,
+    options: Pick<SendOptions, 'retryCount' | 'existingMessageId'> = {}
+  ): Promise<SendResult> {
+    const values = getTemplateVariableValues(template, lead, course, additionalVariables);
+    const { content } = processTemplate(template, lead, course, additionalVariables);
+    return this.sendTemplateMessage(lead.mobile, template, values, content, { ...options, leadId: lead.id });
   }
 
   /**
@@ -177,39 +144,44 @@ export class WhatsAppService {
       .single();
 
     if (error || !msg) return { success: false, error: 'Message not found' };
+    if (msg.direction === 'inbound') return { success: false, error: 'Incoming messages cannot be retried' };
     if (msg.retry_count >= maxRetries) return { success: false, error: 'Maximum retries reached' };
     if (msg.status !== MessageStatus.FAILED) return { success: false, error: 'Message is not in failed state' };
 
-    // Fetch lead's phone number since we don't store it on the message record
-    const { data: lead } = await supabaseAdmin
+    const { data: leadRow } = await supabaseAdmin
       .from('leads')
-      .select('mobile')
+      .select('*')
       .eq('id', msg.lead_id)
       .single();
 
-    if (!lead?.mobile) return { success: false, error: 'Lead phone number not found' };
+    if (!leadRow?.mobile) return { success: false, error: 'Lead phone number not found' };
 
-    const result = await this.sendTextMessage(
-      lead.mobile,
-      msg.content,
-      { leadId: msg.lead_id, templateId: msg.template_id, retryCount: msg.retry_count + 1 }
-    );
+    const retryOptions = { retryCount: (msg.retry_count || 0) + 1, existingMessageId: msg.id };
 
-    if (result.success) {
-      await supabaseAdmin
-        .from('whatsapp_messages')
-        .update({ status: MessageStatus.SENT, retry_count: msg.retry_count + 1, updated_at: new Date().toISOString() })
-        .eq('id', messageId);
+    if (msg.template_id) {
+      const { data: templateRow } = await supabaseAdmin
+        .from('message_templates')
+        .select('*')
+        .eq('id', msg.template_id)
+        .single();
+
+      if (templateRow) {
+        const template = fromTemplateRow(templateRow);
+        const { data: courseRow } = template.courseId
+          ? await supabaseAdmin.from('courses').select('*').eq('id', template.courseId).single()
+          : { data: null };
+        return this.sendTemplateToLead(toLead(leadRow), template, courseRow ? toCourse(courseRow) : undefined, undefined, retryOptions);
+      }
     }
 
-    return result;
+    return this.sendTextMessage(leadRow.mobile, msg.content, { leadId: msg.lead_id, ...retryOptions });
   }
 
   /**
-   * Validate that a phone is a valid Indian mobile number (Wapmonkey format: 91XXXXXXXXXX).
+   * Validate that a phone is a valid Indian mobile number (format: 91XXXXXXXXXX).
    */
   isValidPhoneNumber(phone: string): boolean {
-    return /^91\d{10}$/.test(this.formatPhone(phone));
+    return /^91\d{10}$/.test(toWaPhone(phone));
   }
 
   /**
@@ -219,6 +191,7 @@ export class WhatsAppService {
     const { data } = await supabaseAdmin
       .from('whatsapp_messages')
       .select('status')
+      .eq('direction', 'outbound')
       .gte('created_at', dateFrom.toISOString())
       .lte('created_at', dateTo.toISOString());
 
@@ -240,52 +213,100 @@ export class WhatsAppService {
 
   // ─── Private helpers ─────────────────────────────────────────────────────────
 
-  /**
-   * Format phone to Wapmonkey-compatible format: digits only with country code.
-   * Input:  "+919876543210" | "9876543210" | "919876543210"
-   * Output: "919876543210"
-   */
-  private formatPhone(phone: string): string {
-    const digits = phone.replace(/[^\d]/g, '');
-    if (digits.startsWith('91') && digits.length === 12) return digits;
-    if (digits.length === 10) return `91${digits}`;
-    return digits;
-  }
-
-  private async storeMessage(data: {
-    leadId?:        string;
-    templateId?:    string;
+  private async storeMessage(data: SendOptions & {
+    phone:          string;
     content:        string;
     status:         MessageStatus;
+    messageType:    string;
+    waMessageId?:   string;
     errorMessage?:  string;
-    retryCount:     number;
-    mediaImageUrl?: string;
-    mediaVideoUrl?: string;
-  }): Promise<{ id: string }> {
-    const { data: row, error } = await supabaseAdmin
-      .from('whatsapp_messages')
-      .insert({
-        lead_id:         data.leadId || null,
-        template_id:     data.templateId || null,
-        content:         data.content,
-        status:          data.status,
-        sent_at:         data.status === MessageStatus.SENT ? new Date().toISOString() : null,
-        error_message:   data.errorMessage || null,
-        retry_count:     data.retryCount,
-        media_image_url: data.mediaImageUrl || null,
-        media_video_url: data.mediaVideoUrl || null,
-        created_at:      new Date().toISOString(),
-      })
-      .select('id')
-      .single();
+  }): Promise<{ id: string } | null> {
+    const row = {
+      lead_id:         data.leadId || null,
+      template_id:     data.templateId || null,
+      content:         data.content,
+      status:          data.status,
+      sent_at:         data.status === MessageStatus.SENT ? new Date().toISOString() : null,
+      error_message:   data.errorMessage || null,
+      retry_count:     data.retryCount || 0,
+      media_image_url: data.mediaImageUrl || null,
+      media_video_url: data.mediaVideoUrl || null,
+      direction:       'outbound',
+      wa_message_id:   data.waMessageId || null,
+      phone:           toWaPhone(data.phone),
+      message_type:    data.messageType,
+      is_read:         true,
+    };
 
-    if (error || !row) {
+    const query = data.existingMessageId
+      ? supabaseAdmin.from('whatsapp_messages').update(row).eq('id', data.existingMessageId)
+      : supabaseAdmin.from('whatsapp_messages').insert({ ...row, created_at: new Date().toISOString() });
+
+    const { data: saved, error } = await query.select('id').single();
+
+    if (error || !saved) {
       console.error('storeMessage DB error:', error);
-      throw new Error(`Failed to store message: ${error?.message}`);
+      return null;
     }
 
-    return row;
+    return saved;
   }
+}
+
+interface LeadRow {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  course_interest: string;
+  stage: Lead['stage'];
+  source: Lead['source'];
+  created_at: string;
+  updated_at: string;
+  last_contacted_at: string | null;
+  notes: string | null;
+}
+
+interface CourseRow {
+  id: string;
+  name: string;
+  description: string;
+  duration: string;
+  price: number | null;
+  course_type: Course['courseType'];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+function toLead(row: LeadRow): Lead {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    mobile: row.mobile,
+    courseInterest: row.course_interest,
+    stage: row.stage,
+    source: row.source,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    lastContactedAt: row.last_contacted_at ? new Date(row.last_contacted_at) : undefined,
+    notes: row.notes ?? undefined,
+  };
+}
+
+function toCourse(row: CourseRow): Course {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    duration: row.duration,
+    price: row.price ?? undefined,
+    courseType: row.course_type,
+    isActive: row.is_active,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
 }
 
 export const whatsappService = new WhatsAppService();

@@ -170,6 +170,7 @@ export default function CreateLeadModal({ isOpen, onClose, onSuccess }: CreateLe
             { value: LeadSource.SOCIAL_MEDIA, label: 'Social Media' },
             { value: LeadSource.ADVERTISEMENT, label: 'Advertisement' },
             { value: LeadSource.WALK_IN, label: 'Walk-in' },
+            { value: LeadSource.WHATSAPP, label: 'WhatsApp' },
           ]}
           value={formData.source}
           onChange={(e) => setFormData({ ...formData, source: e.target.value as LeadSource })}

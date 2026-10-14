@@ -98,7 +98,7 @@ export const createLeadSchema = Joi.object({
     .valid(...Object.values(LeadSource))
     .default(LeadSource.WEBSITE)
     .messages({
-      'any.only': 'Source must be one of: website, referral, social_media, advertisement, walk_in',
+      'any.only': 'Source must be one of: website, referral, social_media, advertisement, walk_in, whatsapp',
     }),
 
   notes: Joi.string()
@@ -129,6 +129,7 @@ export const updateLeadSchema = Joi.object({
     .email({ tlds: { allow: false } })
     .trim()
     .lowercase()
+    .allow('')
     .optional()
     .messages({
       'string.email': 'Please provide a valid email address',

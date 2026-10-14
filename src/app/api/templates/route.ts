@@ -8,6 +8,7 @@ import {
 } from '@/models/messageTemplate';
 import { authenticateApiRequest } from '@/middleware/authMiddleware';
 import { handleApiError } from '@/utils/apiErrorHandling';
+import { fromTemplateRow } from '@/services/metaTemplateService';
 import { MessageTemplate, TemplateType, ApiResponse, PaginatedResponse } from '@/types';
 
 /**
@@ -90,20 +91,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform data to match interface
-    const templates: MessageTemplate[] = (data || []).map(item => ({
-      id:               item.id,
-      courseId:         item.course_id,
-      type:             item.type as TemplateType,
-      name:             item.name,
-      content:          item.content,
-      variables:        item.variables || [],
-      variableDefaults: item.variable_defaults || {},
-      mediaImageUrl:    item.media_image_url || undefined,
-      mediaVideoUrl:    item.media_video_url || undefined,
-      isActive:         item.is_active,
-      createdAt:        new Date(item.created_at),
-      updatedAt:        new Date(item.updated_at),
-    }));
+    const templates: MessageTemplate[] = (data || []).map(fromTemplateRow);
 
     const response: PaginatedResponse<MessageTemplate> = {
       data: templates,
@@ -248,20 +236,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const template: MessageTemplate = {
-      id:               data.id,
-      courseId:         data.course_id,
-      type:             data.type as TemplateType,
-      name:             data.name,
-      content:          data.content,
-      variables:        data.variables || [],
-      variableDefaults: data.variable_defaults || {},
-      mediaImageUrl:    data.media_image_url || undefined,
-      mediaVideoUrl:    data.media_video_url || undefined,
-      isActive:         data.is_active,
-      createdAt:        new Date(data.created_at),
-      updatedAt:        new Date(data.updated_at),
-    };
+    const template: MessageTemplate = fromTemplateRow(data);
 
     const response: ApiResponse<MessageTemplate> = {
       success: true,

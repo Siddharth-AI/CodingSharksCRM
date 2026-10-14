@@ -169,6 +169,30 @@ export const getAllTemplateVariables = (
 /**
  * Process template with lead and course data
  */
+export const getTemplateVariableValues = (
+  template: MessageTemplate,
+  lead: Lead,
+  course?: Course,
+  additionalVariables?: Record<string, string>
+): Record<string, string> => {
+  // Determine follow-up number based on template type
+  let followUpNumber: number | undefined;
+  if (template.type === TemplateType.FOLLOW_UP_DAY_1) followUpNumber = 1;
+  else if (template.type === TemplateType.FOLLOW_UP_DAY_2) followUpNumber = 2;
+  else if (template.type === TemplateType.FOLLOW_UP_DAY_3) followUpNumber = 3;
+  
+  // Include promotional variables for follow-up templates
+  const includePromotional = template.type.startsWith('follow_up');
+  
+  return {
+    ...getAllTemplateVariables(lead, course, followUpNumber, includePromotional),
+    // template-stored defaults for custom variables (lowest priority)
+    ...(template.variableDefaults || {}),
+    // caller-supplied overrides (highest priority)
+    ...additionalVariables,
+  };
+};
+
 export const processTemplate = (
   template: MessageTemplate,
   lead: Lead,
@@ -179,22 +203,7 @@ export const processTemplate = (
   missingVariables: string[];
   substitutionCount: number;
 } => {
-  // Determine follow-up number based on template type
-  let followUpNumber: number | undefined;
-  if (template.type === TemplateType.FOLLOW_UP_DAY_1) followUpNumber = 1;
-  else if (template.type === TemplateType.FOLLOW_UP_DAY_2) followUpNumber = 2;
-  else if (template.type === TemplateType.FOLLOW_UP_DAY_3) followUpNumber = 3;
-  
-  // Include promotional variables for follow-up templates
-  const includePromotional = template.type.startsWith('follow_up');
-  
-  const variables = {
-    ...getAllTemplateVariables(lead, course, followUpNumber, includePromotional),
-    // template-stored defaults for custom variables (lowest priority)
-    ...(template.variableDefaults || {}),
-    // caller-supplied overrides (highest priority)
-    ...additionalVariables,
-  };
+  const variables = getTemplateVariableValues(template, lead, course, additionalVariables);
   
   const { result, missingVariables, substitutionCount } = substituteTemplateVariables(template.content, variables);
   return { content: result, missingVariables, substitutionCount };

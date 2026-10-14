@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { whatsappService } from '@/services/whatsappService';
+import { fromTemplateRow } from '@/services/metaTemplateService';
 import { bulkSendSchema } from '@/models/whatsappMessage';
 import { processTemplate } from '@/utils/templateUtils';
 import { authenticateApiRequest } from '@/middleware/authMiddleware';
@@ -8,7 +9,7 @@ import { handleApiError } from '@/utils/apiErrorHandling';
 import { ApiResponse, Lead, Course, MessageTemplate } from '@/types';
 
 /**
- * POST /api/messages/bulk-send - Send WhatsApp messages to multiple leads via Wapmonkey
+ * POST /api/messages/bulk-send - Send WhatsApp messages to multiple leads via the WhatsApp Cloud API
  */
 export async function POST(request: NextRequest) {
   try {
@@ -48,8 +49,15 @@ export async function POST(request: NextRequest) {
       delayBetweenMessages,
     } = validatedData;
 
+    if (scheduledAt) {
+      return NextResponse.json(
+        { success: false, error: 'Scheduled sending is not supported by the WhatsApp Cloud API' },
+        { status: 400 }
+      );
+    }
+
     // Fetch all leads
-    const { data: leadsData, error: leadsError } = await supabase
+    const { data: leadsData, error: leadsError } = await supabaseAdmin
       .from('leads')
       .select('*')
       .in('id', leadIds);
@@ -80,7 +88,7 @@ export async function POST(request: NextRequest) {
     let course: Course | undefined;
 
     if (useTemplate && templateId) {
-      const { data: templateData, error: templateError } = await supabase
+      const { data: templateData, error: templateError } = await supabaseAdmin
         .from('message_templates')
         .select('*')
         .eq('id', templateId)
@@ -90,21 +98,17 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
       }
 
-      template = {
-        id: templateData.id,
-        courseId: templateData.course_id,
-        type: templateData.type,
-        name: templateData.name,
-        content: templateData.content,
-        variables: templateData.variables || [],
-        variableDefaults: templateData.variable_defaults || {},
-        isActive: templateData.is_active,
-        createdAt: new Date(templateData.created_at),
-        updatedAt: new Date(templateData.updated_at),
-      };
+      template = fromTemplateRow(templateData);
+
+      if (template.metaStatus !== 'APPROVED') {
+        return NextResponse.json(
+          { success: false, error: `Template "${template.name}" is not approved on WhatsApp yet` },
+          { status: 400 }
+        );
+      }
 
       if (template.courseId) {
-        const { data: courseData } = await supabase
+        const { data: courseData } = await supabaseAdmin
           .from('courses')
           .select('*')
           .eq('id', template.courseId)
@@ -163,14 +167,12 @@ export async function POST(request: NextRequest) {
             return { leadId: lead.id, leadName: lead.name, success: false, error: 'No message content' };
           }
 
-          const sendResult = await whatsappService.sendTextMessage(
-            lead.mobile,
-            finalContent,
-            { leadId: lead.id, templateId, scheduledAt }
-          );
+          const sendResult = useTemplate && template
+            ? await whatsappService.sendTemplateToLead(lead, template, course, templateVariables)
+            : await whatsappService.sendTextMessage(lead.mobile, finalContent, { leadId: lead.id });
 
           if (sendResult.success) {
-            await supabase.from('activities').insert({
+            await supabaseAdmin.from('activities').insert({
               lead_id: lead.id,
               type: 'message_sent',
               description: `Bulk WhatsApp message sent: ${finalContent.substring(0, 50)}${finalContent.length > 50 ? '...' : ''}`,

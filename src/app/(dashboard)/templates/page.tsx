@@ -2,11 +2,30 @@
 
 import React, { useState } from 'react';
 import { Layout } from '@/components/layout';
-import { useGetTemplatesQuery, useDeleteTemplateMutation } from '@/store/api';
-import { Button, Card, Input, Select } from '@/components/ui';
+import {
+  useGetTemplatesQuery,
+  useDeleteTemplateMutation,
+  useSubmitTemplateToMetaMutation,
+  useSyncTemplateStatusesMutation,
+} from '@/store/api';
+import { Button, Card, Input, Select, Modal } from '@/components/ui';
 import CreateTemplateModal from '@/components/forms/CreateTemplateModal';
 import { EditTemplateModal } from '@/components/forms/EditTemplateModal';
-import { MessageTemplate } from '@/types';
+import { MessageTemplate, MetaTemplateCategory } from '@/types';
+
+const META_STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  APPROVED: { label: 'WhatsApp: Approved', className: 'bg-green-100 text-green-800' },
+  PENDING: { label: 'WhatsApp: In review', className: 'bg-yellow-100 text-yellow-800' },
+  REJECTED: { label: 'WhatsApp: Rejected', className: 'bg-red-100 text-red-800' },
+  EDITED: { label: 'WhatsApp: Edited - resubmit', className: 'bg-orange-100 text-orange-800' },
+  PAUSED: { label: 'WhatsApp: Paused', className: 'bg-orange-100 text-orange-800' },
+  DISABLED: { label: 'WhatsApp: Disabled', className: 'bg-gray-200 text-gray-800' },
+};
+
+const metaBadge = (status?: string) =>
+  status
+    ? META_STATUS_STYLES[status] || { label: `WhatsApp: ${status}`, className: 'bg-gray-100 text-gray-800' }
+    : { label: 'WhatsApp: Not submitted', className: 'bg-gray-100 text-gray-600' };
 
 export default function TemplatesPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,6 +41,36 @@ export default function TemplatesPage() {
     type: typeFilter,
   });
   const [deleteTemplate] = useDeleteTemplateMutation();
+  const [submitToMeta, { isLoading: isSubmitting }] = useSubmitTemplateToMetaMutation();
+  const [syncStatuses, { isLoading: isSyncing }] = useSyncTemplateStatusesMutation();
+  const [submitTarget, setSubmitTarget] = useState<MessageTemplate | null>(null);
+  const [submitCategory, setSubmitCategory] = useState<MetaTemplateCategory>('MARKETING');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const openSubmit = (template: MessageTemplate) => {
+    setSubmitTarget(template);
+    setSubmitCategory(template.metaCategory || (template.type === 'welcome' ? 'UTILITY' : 'MARKETING'));
+    setSubmitError(null);
+  };
+
+  const handleSubmitToMeta = async () => {
+    if (!submitTarget) return;
+    setSubmitError(null);
+    try {
+      await submitToMeta({ id: submitTarget.id, category: submitCategory }).unwrap();
+      setSubmitTarget(null);
+    } catch (error: unknown) {
+      setSubmitError((error as { data?: { error?: string } })?.data?.error || 'Failed to submit template to WhatsApp');
+    }
+  };
+
+  const handleSync = async () => {
+    try {
+      await syncStatuses().unwrap();
+    } catch (error: unknown) {
+      alert((error as { data?: { error?: string } })?.data?.error || 'Failed to refresh WhatsApp status');
+    }
+  };
 
   const templates = templatesData?.data || [];
 
@@ -61,12 +110,17 @@ export default function TemplatesPage() {
             <h1 className="text-2xl font-bold text-gray-900">Message Templates</h1>
             <p className="text-gray-600 mt-1">Create and manage WhatsApp message templates</p>
           </div>
-          <Button 
-            variant="primary"
-            onClick={() => setIsCreateModalOpen(true)}
-          >
-            ➕ Create Template
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleSync} isLoading={isSyncing}>
+              Refresh WhatsApp status
+            </Button>
+            <Button 
+              variant="primary"
+              onClick={() => setIsCreateModalOpen(true)}
+            >
+              ➕ Create Template
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -134,6 +188,19 @@ export default function TemplatesPage() {
                     </span>
                   </div>
 
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`px-2 py-1 text-xs rounded-full ${metaBadge(template.metaStatus).className}`}>
+                      {metaBadge(template.metaStatus).label}
+                    </span>
+                    {template.metaCategory && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-700">{template.metaCategory}</span>
+                    )}
+                  </div>
+
+                  {template.metaStatus === 'REJECTED' && template.metaRejectionReason && (
+                    <p className="text-xs text-red-700 bg-red-50 rounded p-2">Reason: {template.metaRejectionReason}</p>
+                  )}
+
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm text-gray-700 whitespace-pre-wrap line-clamp-4">
                       {template.content}
@@ -162,6 +229,16 @@ export default function TemplatesPage() {
                     >
                       Edit
                     </Button>
+                    {template.metaStatus !== 'APPROVED' && template.metaStatus !== 'PENDING' && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        fullWidth
+                        onClick={() => openSubmit(template)}
+                      >
+                        {template.metaStatus ? 'Resubmit to WhatsApp' : 'Submit to WhatsApp'}
+                      </Button>
+                    )}
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -177,6 +254,45 @@ export default function TemplatesPage() {
             ))}
           </div>
         )}
+
+        <Modal
+          isOpen={!!submitTarget}
+          onClose={() => setSubmitTarget(null)}
+          title="Submit template to WhatsApp"
+          size="md"
+        >
+          {submitTarget && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">{submitTarget.name}</span> will be sent to WhatsApp for review.
+                Review usually takes a few minutes and can take up to 24 hours.
+              </p>
+              <Select
+                label="Category"
+                options={[
+                  { value: 'UTILITY', label: 'Utility - updates about an enquiry (welcome, batch details, fees reminder)' },
+                  { value: 'MARKETING', label: 'Marketing - offers, promotions, new courses' },
+                ]}
+                value={submitCategory}
+                onChange={e => setSubmitCategory(e.target.value as MetaTemplateCategory)}
+              />
+              <p className="text-xs text-gray-500">
+                WhatsApp can change the category after review. Marketing messages cost more than utility messages.
+              </p>
+              {submitError && (
+                <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded text-sm">{submitError}</div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setSubmitTarget(null)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleSubmitToMeta} isLoading={isSubmitting}>
+                  Submit
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
 
         {/* Create Template Modal */}
         <CreateTemplateModal

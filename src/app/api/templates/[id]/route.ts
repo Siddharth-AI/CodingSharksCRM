@@ -8,7 +8,8 @@ import {
 } from '@/models/messageTemplate';
 import { authenticateApiRequest } from '@/middleware/authMiddleware';
 import { handleApiError } from '@/utils/apiErrorHandling';
-import { MessageTemplate, TemplateType, UpdateMessageTemplateRequest } from '@/types';
+import { fromTemplateRow } from '@/services/metaTemplateService';
+import { MessageTemplate, UpdateMessageTemplateRequest } from '@/types';
 
 /**
  * GET /api/templates/[id] - Get template by ID
@@ -58,20 +59,7 @@ export async function GET(
       );
     }
 
-    const template: MessageTemplate = {
-      id:               data.id,
-      courseId:         data.course_id,
-      type:             data.type as TemplateType,
-      name:             data.name,
-      content:          data.content,
-      variables:        data.variables || [],
-      variableDefaults: data.variable_defaults || {},
-      mediaImageUrl:    data.media_image_url || undefined,
-      mediaVideoUrl:    data.media_video_url || undefined,
-      isActive:         data.is_active,
-      createdAt:        new Date(data.created_at),
-      updatedAt:        new Date(data.updated_at),
-    };
+    const template: MessageTemplate = fromTemplateRow(data);
 
     return NextResponse.json({ success: true, data: template });
 
@@ -224,6 +212,16 @@ export async function PUT(
       updateObject.media_video_url = updateData.mediaVideoUrl || null;
     }
 
+    const metaContentChanged =
+      (updateObject.content !== undefined && updateObject.content !== existingTemplate.content) ||
+      (updateObject.media_image_url !== undefined && updateObject.media_image_url !== existingTemplate.media_image_url) ||
+      (updateObject.media_video_url !== undefined && updateObject.media_video_url !== existingTemplate.media_video_url);
+
+    if (metaContentChanged && existingTemplate.meta_template_id) {
+      updateObject.meta_status = 'EDITED';
+      updateObject.meta_rejection_reason = null;
+    }
+
     // Update template
     const { data, error: updateError } = await supabaseAdmin
       .from('message_templates')
@@ -240,18 +238,7 @@ export async function PUT(
       );
     }
 
-    const updatedTemplate: MessageTemplate = {
-      id:               data.id,
-      courseId:         data.course_id,
-      type:             data.type as TemplateType,
-      name:             data.name,
-      content:          data.content,
-      variables:        data.variables || [],
-      variableDefaults: data.variable_defaults || {},
-      isActive:         data.is_active,
-      createdAt:        new Date(data.created_at),
-      updatedAt:        new Date(data.updated_at),
-    };
+    const updatedTemplate: MessageTemplate = fromTemplateRow(data);
 
     return NextResponse.json({
       success: true,

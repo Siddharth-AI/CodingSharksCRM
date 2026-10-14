@@ -23,7 +23,10 @@ import {
   CreateMessageRequest,
   LeadFilters,
   PaginatedResponse,
-  DateRange
+  DateRange,
+  InboxConversation,
+  InboxThread,
+  MetaTemplateCategory
 } from '@/types';
 
 // Base query with authentication and API debugging
@@ -64,7 +67,7 @@ const baseQueryWithRetry = async (args: any, api: any, extraOptions: any) => {
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithRetry,
-  tagTypes: ['Lead', 'Course', 'MessageTemplate', 'WhatsAppMessage', 'Activity', 'Dashboard', 'Auth'],
+  tagTypes: ['Lead', 'Course', 'MessageTemplate', 'WhatsAppMessage', 'Activity', 'Dashboard', 'Auth', 'Inbox'],
   endpoints: (builder) => ({
     // Health check endpoint
     healthCheck: builder.query<ApiResponse<{ status: string }>, void>({
@@ -453,6 +456,26 @@ export const api = createApi({
       providesTags: ['MessageTemplate', 'Dashboard'],
     }),
 
+    submitTemplateToMeta: builder.mutation<ApiResponse<MessageTemplate>, { id: string; category: MetaTemplateCategory; language?: string }>({
+      query: ({ id, category, language }) => ({
+        url: `/templates/${id}/meta-submit`,
+        method: 'POST',
+        body: { category, ...(language ? { language } : {}) },
+      }),
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'MessageTemplate', id },
+        { type: 'MessageTemplate', id: 'LIST' },
+      ],
+    }),
+
+    syncTemplateStatuses: builder.mutation<ApiResponse<{ checked: number; updated: number }>, void>({
+      query: () => ({
+        url: '/templates/meta-sync',
+        method: 'POST',
+      }),
+      invalidatesTags: [{ type: 'MessageTemplate', id: 'LIST' }],
+    }),
+
     bulkTemplateOperation: builder.mutation<ApiResponse<{
       results: Array<{ id: string; success: boolean; error?: string }>;
       summary: {
@@ -499,7 +522,29 @@ export const api = createApi({
         method: 'POST',
         body: messageData,
       }),
-      invalidatesTags: [{ type: 'WhatsAppMessage', id: 'LIST' }, 'Activity', 'Dashboard'],
+      invalidatesTags: [{ type: 'WhatsAppMessage', id: 'LIST' }, 'Activity', 'Dashboard', 'Inbox'],
+    }),
+
+    getConversations: builder.query<ApiResponse<InboxConversation[]> & { meta?: { totalUnread: number } }, { search?: string } | void>({
+      query: (args) => {
+        const params = new URLSearchParams();
+        if (args && args.search) params.append('search', args.search);
+        return `/inbox/conversations?${params}`;
+      },
+      providesTags: [{ type: 'Inbox', id: 'LIST' }],
+    }),
+
+    getConversation: builder.query<ApiResponse<InboxThread>, string>({
+      query: (leadId) => `/inbox/conversations/${leadId}`,
+      providesTags: (result, error, leadId) => [{ type: 'Inbox', id: leadId }],
+    }),
+
+    markConversationRead: builder.mutation<ApiResponse<{ marked: number }>, string>({
+      query: (leadId) => ({
+        url: `/inbox/conversations/${leadId}/read`,
+        method: 'POST',
+      }),
+      invalidatesTags: [{ type: 'Inbox', id: 'LIST' }],
     }),
 
     resendMessage: builder.mutation<ApiResponse<WhatsAppMessage>, string>({
@@ -744,6 +789,8 @@ export const {
   useGenerateTemplatePreviewMutation,
   useGetTemplateStatisticsQuery,
   useBulkTemplateOperationMutation,
+  useSubmitTemplateToMetaMutation,
+  useSyncTemplateStatusesMutation,
   
   // Message hooks
   useGetMessagesQuery,
@@ -751,6 +798,11 @@ export const {
   useResendMessageMutation,
   useDeleteMessageMutation,
   useGetMessageStatusQuery,
+
+  // Inbox hooks
+  useGetConversationsQuery,
+  useGetConversationQuery,
+  useMarkConversationReadMutation,
   
   // Activity hooks
   useGetActivitiesQuery,

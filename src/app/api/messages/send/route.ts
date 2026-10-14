@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { whatsappService } from '@/services/whatsappService';
+import { fromTemplateRow } from '@/services/metaTemplateService';
 import { sendMessageSchema } from '@/models/whatsappMessage';
 import { processTemplate } from '@/utils/templateUtils';
 import { authenticateApiRequest } from '@/middleware/authMiddleware';
@@ -8,7 +9,7 @@ import { handleApiError } from '@/utils/apiErrorHandling';
 import { WhatsAppMessage, MessageStatus, ApiResponse, Lead, Course, MessageTemplate } from '@/types';
 
 /**
- * POST /api/messages/send - Send a WhatsApp message via Wapmonkey
+ * POST /api/messages/send - Send a WhatsApp message via the WhatsApp Cloud API
  */
 export async function POST(request: NextRequest) {
   try {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     const { leadId, templateId, content, useTemplate, templateVariables, scheduledAt } = validatedData;
 
     // Fetch lead
-    const { data: leadData, error: leadError } = await supabase
+    const { data: leadData, error: leadError } = await supabaseAdmin
       .from('leads')
       .select('*')
       .eq('id', leadId)
@@ -64,13 +65,20 @@ export async function POST(request: NextRequest) {
       notes: leadData.notes,
     };
 
+    if (scheduledAt) {
+      return NextResponse.json(
+        { success: false, error: 'Scheduled sending is not supported by the WhatsApp Cloud API' },
+        { status: 400 }
+      );
+    }
+
     let finalContent = content as string;
     let template: MessageTemplate | undefined;
     let course: Course | undefined;
 
     // Resolve template content
     if (useTemplate && templateId) {
-      const { data: templateData, error: templateError } = await supabase
+      const { data: templateData, error: templateError } = await supabaseAdmin
         .from('message_templates')
         .select('*')
         .eq('id', templateId)
@@ -80,24 +88,18 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
       }
 
-      template = {
-        id:               templateData.id,
-        courseId:         templateData.course_id,
-        type:             templateData.type,
-        name:             templateData.name,
-        content:          templateData.content,
-        variables:        templateData.variables || [],
-        variableDefaults: templateData.variable_defaults || {},
-        mediaImageUrl:    templateData.media_image_url || undefined,
-        mediaVideoUrl:    templateData.media_video_url || undefined,
-        isActive:         templateData.is_active,
-        createdAt:        new Date(templateData.created_at),
-        updatedAt:        new Date(templateData.updated_at),
-      };
+      template = fromTemplateRow(templateData);
+
+      if (template.metaStatus !== 'APPROVED') {
+        return NextResponse.json(
+          { success: false, error: `Template "${template.name}" is not approved on WhatsApp yet. Submit it from the Templates page and wait for approval.` },
+          { status: 400 }
+        );
+      }
 
       // Fetch course if template is associated with one
       if (template.courseId) {
-        const { data: courseData } = await supabase
+        const { data: courseData } = await supabaseAdmin
           .from('courses')
           .select('*')
           .eq('id', template.courseId)
@@ -141,31 +143,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build Wapmonkey media array from template media
-    const wapMedia: { url: string; caption?: string }[] = [];
-    if (template?.mediaImageUrl) wapMedia.push({ url: template.mediaImageUrl });
-    if (template?.mediaVideoUrl) wapMedia.push({ url: template.mediaVideoUrl });
-
-    // Send via Wapmonkey (handles scheduling internally)
-    const sendResult = await whatsappService.sendTextMessage(
-      lead.mobile,
-      finalContent,
-      {
-        leadId,
-        templateId,
-        scheduledAt,
-        ...(wapMedia.length > 0 ? { media: wapMedia } : {}),
-        mediaImageUrl: template?.mediaImageUrl,
-        mediaVideoUrl: template?.mediaVideoUrl,
-      }
-    );
+    const sendResult = template
+      ? await whatsappService.sendTemplateToLead(lead, template, course, templateVariables)
+      : await whatsappService.sendTextMessage(lead.mobile, finalContent, { leadId });
 
     if (!sendResult.success) {
-      return NextResponse.json({ success: false, error: sendResult.error }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: sendResult.error, outsideWindow: sendResult.outsideWindow || false },
+        { status: sendResult.outsideWindow ? 409 : 502 }
+      );
     }
 
     // Fetch the stored message record
-    const { data: messageData, error: messageError } = await supabase
+    const { data: messageData, error: messageError } = await supabaseAdmin
       .from('whatsapp_messages')
       .select('*')
       .eq('id', sendResult.messageId)
@@ -190,10 +180,17 @@ export async function POST(request: NextRequest) {
       errorMessage: messageData.error_message,
       retryCount: messageData.retry_count || 0,
       createdAt: new Date(messageData.created_at),
+      mediaImageUrl: messageData.media_image_url || undefined,
+      mediaVideoUrl: messageData.media_video_url || undefined,
+      direction: messageData.direction,
+      waMessageId: messageData.wa_message_id || undefined,
+      phone: messageData.phone || undefined,
+      messageType: messageData.message_type,
+      isRead: messageData.is_read,
     };
 
     // Log activity
-    await supabase.from('activities').insert({
+    await supabaseAdmin.from('activities').insert({
       lead_id: leadId,
       type: 'message_sent',
       description: `WhatsApp message sent: ${finalContent.substring(0, 50)}${finalContent.length > 50 ? '...' : ''}`,

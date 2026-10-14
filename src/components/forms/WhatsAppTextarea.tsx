@@ -23,7 +23,12 @@ const FORMATS = [
  * *bold* → <strong>, _italic_ → <em>, ~strike~ → <s>, ```mono``` → <code>
  */
 export function renderWhatsAppText(text: string): string {
-  return text
+  return (text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
     .replace(/\*([^*\n]+)\*/g,   '<strong>$1</strong>')
     .replace(/_([^_\n]+)_/g,     '<em>$1</em>')
     .replace(/~([^~\n]+)~/g,     '<s>$1</s>')

@@ -38,7 +38,20 @@ export interface MessageTemplate {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  metaTemplateId?: string;
+  metaName?: string;
+  metaLanguage?: string;
+  metaCategory?: MetaTemplateCategory;
+  metaStatus?: string;
+  metaRejectionReason?: string;
+  metaParamNames?: string[];
+  metaHeaderFormat?: 'IMAGE' | 'VIDEO';
+  metaSubmittedAt?: Date;
 }
+
+export type MetaTemplateCategory = 'MARKETING' | 'UTILITY';
+
+export type MessageDirection = 'inbound' | 'outbound';
 
 export interface WhatsAppMessage {
   id: string;
@@ -54,6 +67,34 @@ export interface WhatsAppMessage {
   createdAt: Date;
   mediaImageUrl?: string;
   mediaVideoUrl?: string;
+  direction?: MessageDirection;
+  waMessageId?: string;
+  phone?: string;
+  messageType?: string;
+  mediaId?: string;
+  mediaMimeType?: string;
+  isRead?: boolean;
+}
+
+export interface InboxConversation {
+  leadId: string;
+  name: string;
+  mobile: string;
+  lastMessage: string;
+  lastMessageType: string;
+  lastDirection: MessageDirection;
+  lastStatus: string;
+  lastAt: string;
+  lastInboundAt?: string;
+  unread: number;
+  windowOpen: boolean;
+}
+
+export interface InboxThread {
+  lead: Lead;
+  messages: WhatsAppMessage[];
+  lastInboundAt?: string;
+  windowOpen: boolean;
 }
 
 export interface Activity {
@@ -89,7 +130,8 @@ export enum LeadSource {
   REFERRAL = 'referral',
   SOCIAL_MEDIA = 'social_media',
   ADVERTISEMENT = 'advertisement',
-  WALK_IN = 'walk_in'
+  WALK_IN = 'walk_in',
+  WHATSAPP = 'whatsapp'
 }
 
 export enum CourseType {
@@ -126,7 +168,8 @@ export enum ActivityType {
   EMAIL_SENT = 'email_sent',
   MEETING_SCHEDULED = 'meeting_scheduled',
   FOLLOW_UP_SCHEDULED = 'follow_up_scheduled',
-  WORKFLOW_TRIGGERED = 'workflow_triggered'
+  WORKFLOW_TRIGGERED = 'workflow_triggered',
+  LEAD_TOUCH = 'lead_touch'
 }
 
 // Request/Response Types
@@ -191,6 +234,8 @@ export interface CreateMessageRequest {
   leadId: string;
   templateId?: string;
   content: string;
+  useTemplate?: boolean;
+  templateVariables?: Record<string, string>;
 }
 
 // Filter and Pagination Types

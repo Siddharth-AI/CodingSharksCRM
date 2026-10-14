@@ -14,7 +14,7 @@ interface SendMessageModalProps {
 
 // Variables that are auto-filled from lead / course / system data on the server.
 // Users do NOT need to supply these manually.
-const AUTO_FILLED_VARIABLES = new Set([
+export const AUTO_FILLED_VARIABLES = new Set([
   // Lead
   'name', 'first_name', 'last_name', 'email', 'mobile', 'course_interest',
   'inquiry_date',
@@ -31,7 +31,7 @@ const AUTO_FILLED_VARIABLES = new Set([
 ]);
 
 /** Extract all {{variable_name}} placeholders from a template string. */
-function extractVariables(content: string): string[] {
+export function extractVariables(content: string): string[] {
   const matches = content.match(/\{\{(\w+)\}\}/g) || [];
   return [...new Set(matches.map(m => m.slice(2, -2)))];
 }
@@ -58,7 +58,7 @@ export default function SendMessageModal({ isOpen, onClose, onSuccess }: SendMes
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const leads     = leadsData?.data     || [];
-  const templates = templatesData?.data || [];
+  const templates = (templatesData?.data || []).filter(t => t.metaStatus === 'APPROVED' && t.isActive);
   const courses   = coursesData?.data   || [];
 
   const selectedTemplate = useMemo(
@@ -227,7 +227,7 @@ export default function SendMessageModal({ isOpen, onClose, onSuccess }: SendMes
             <Select
               label="Select Template"
               options={[
-                { value: '', label: 'Choose a template' },
+                { value: '', label: templates.length === 0 ? 'No WhatsApp-approved templates yet' : 'Choose a template' },
                 ...templates.map(t => ({ value: t.id, label: t.name })),
               ]}
               value={formData.templateId}

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createLeadSchema, formatMobileNumber } from '@/models/lead';
 import { sendAutoWelcomeMessage } from '@/services/autoWelcomeService';
-import { whatsappService } from '@/services/whatsappService';
 import { Lead, LeadStage, LeadSource } from '@/types';
 
 /**
@@ -127,15 +126,10 @@ export async function POST(request: NextRequest) {
       created_at:  new Date().toISOString(),
     });
 
-    // ── Auto-welcome + owner notification — only for NEW leads ───────────────
-    await Promise.allSettled([
-      sendAutoWelcomeMessage(newLead).catch(err =>
-        console.error('Auto-welcome failed for external lead', newLead.id, ':', err?.message || err)
-      ),
-      notifyOwner(newLead).catch(err =>
-        console.error('Owner notification failed for lead', newLead.id, ':', err?.message || err)
-      ),
-    ]);
+    // ── Auto-welcome — only for NEW leads ────────────────────────────────────
+    await sendAutoWelcomeMessage(newLead).catch(err =>
+      console.error('Auto-welcome failed for external lead', newLead.id, ':', err?.message || err)
+    );
 
     return NextResponse.json({
       success: true,
@@ -151,35 +145,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-/**
- * Send a WhatsApp notification to the owner when a new lead comes in from the website.
- * Fire-and-forget — never throws.
- */
-async function notifyOwner(lead: Lead): Promise<void> {
-  const ownerNumber = process.env.OWNER_WHATSAPP_NUMBER;
-  if (!ownerNumber) return;
-
-  // Fetch course name
-  let courseName = 'Not specified';
-  if (lead.courseInterest) {
-    const { data: courseData } = await supabaseAdmin
-      .from('courses')
-      .select('name')
-      .eq('id', lead.courseInterest)
-      .single();
-    if (courseData?.name) courseName = courseData.name;
-  }
-
-  const message = [
-    `🔔 *New Lead — CodingShark Website*`,
-    ``,
-    `*Name:* ${lead.name}`,
-    `*Mobile:* ${lead.mobile}`,
-    `*Course:* ${courseName}`,
-    lead.notes ? `*Notes:* ${lead.notes}` : null,
-  ].filter(Boolean).join('\n');
-
-  await whatsappService.sendTextMessage(ownerNumber, message, {});
 }

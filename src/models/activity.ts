@@ -83,6 +83,7 @@ export const activityTypeDescriptions: Record<ActivityType, string> = {
   [ActivityType.MEETING_SCHEDULED]: 'Meeting scheduled',
   [ActivityType.FOLLOW_UP_SCHEDULED]: 'Follow-up scheduled',
   [ActivityType.WORKFLOW_TRIGGERED]: 'Automation workflow triggered',
+  [ActivityType.LEAD_TOUCH]: 'Lead submitted the form again',
 };
 
 /**
@@ -103,6 +104,7 @@ export function getActivityIcon(type: ActivityType): string {
     [ActivityType.MEETING_SCHEDULED]: '📅',
     [ActivityType.FOLLOW_UP_SCHEDULED]: '⏰',
     [ActivityType.WORKFLOW_TRIGGERED]: '⚙️',
+    [ActivityType.LEAD_TOUCH]: '🔁',
   };
   return iconMap[type] || '📋';
 }
@@ -125,6 +127,7 @@ export function getActivityColor(type: ActivityType): string {
     [ActivityType.MEETING_SCHEDULED]: 'purple',
     [ActivityType.FOLLOW_UP_SCHEDULED]: 'orange',
     [ActivityType.WORKFLOW_TRIGGERED]: 'indigo',
+    [ActivityType.LEAD_TOUCH]: 'blue',
   };
   return colorMap[type] || 'gray';
 }

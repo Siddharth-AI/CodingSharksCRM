@@ -23,7 +23,7 @@ export const EditLeadModal: React.FC<EditLeadModalProps> = ({
   
   const [formData, setFormData] = useState({
     name: lead.name,
-    email: lead.email,
+    email: lead.email || '',
     mobile: lead.mobile,
     courseInterest: lead.courseInterest,
     stage: lead.stage,
@@ -36,7 +36,7 @@ export const EditLeadModal: React.FC<EditLeadModalProps> = ({
     if (isOpen) {
       setFormData({
         name: lead.name,
-        email: lead.email,
+        email: lead.email || '',
         mobile: lead.mobile,
         courseInterest: lead.courseInterest,
         stage: lead.stage,
@@ -53,9 +53,7 @@ export const EditLeadModal: React.FC<EditLeadModalProps> = ({
       newErrors.name = 'Name is required';
     }
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address';
     }
 

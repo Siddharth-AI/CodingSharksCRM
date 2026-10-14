@@ -29,6 +29,7 @@ const SOURCE_ICONS = {
   social_media: '📱',
   advertisement: '📢',
   walk_in: '🚶',
+  whatsapp: '💬',
 };
 
 export const LeadCard: React.FC<LeadCardProps> = ({ lead, isDragging, onRefresh }) => {
