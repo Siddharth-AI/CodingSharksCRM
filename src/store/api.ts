@@ -26,7 +26,8 @@ import {
   DateRange,
   InboxConversation,
   InboxThread,
-  MetaTemplateCategory
+  MetaTemplateCategory,
+  TemplateValuesResponse
 } from '@/types';
 
 // Base query with authentication and API debugging
@@ -539,6 +540,20 @@ export const api = createApi({
       providesTags: (result, error, leadId) => [{ type: 'Inbox', id: leadId }],
     }),
 
+    startChat: builder.mutation<ApiResponse<{ leadId: string; created: boolean; name: string }>, { mobile: string; name?: string; courseId?: string | null }>({
+      query: (body) => ({
+        url: '/inbox/start',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [{ type: 'Lead', id: 'LIST' }],
+    }),
+
+    getTemplateValues: builder.query<ApiResponse<TemplateValuesResponse>, { leadId: string; templateId: string }>({
+      query: ({ leadId, templateId }) => `/inbox/template-values?leadId=${leadId}&templateId=${templateId}`,
+      keepUnusedDataFor: 0,
+    }),
+
     markConversationRead: builder.mutation<ApiResponse<{ marked: number }>, string>({
       query: (leadId) => ({
         url: `/inbox/conversations/${leadId}/read`,
@@ -803,6 +818,8 @@ export const {
   useGetConversationsQuery,
   useGetConversationQuery,
   useMarkConversationReadMutation,
+  useStartChatMutation,
+  useGetTemplateValuesQuery,
   
   // Activity hooks
   useGetActivitiesQuery,

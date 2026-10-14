@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { authenticateApiRequest } from '@/middleware/authMiddleware';
 import { handleApiError } from '@/utils/apiErrorHandling';
-import { InboxThread, Lead, MessageStatus, WhatsAppMessage } from '@/types';
+import { CourseType, InboxThread, Lead, MessageStatus, WhatsAppMessage } from '@/types';
 
 const THREAD_LIMIT = 300;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -24,7 +24,7 @@ export async function GET(
     }
 
     const [{ data: leadRow, error: leadError }, { data: rows, error: messagesError }] = await Promise.all([
-      supabaseAdmin.from('leads').select('*').eq('id', leadId).single(),
+      supabaseAdmin.from('leads').select('*, courses(id, name, course_type)').eq('id', leadId).single(),
       supabaseAdmin
         .from('whatsapp_messages')
         .select('*')
@@ -80,8 +80,12 @@ export async function GET(
     const lastInbound = [...messages].reverse().find(m => m.direction === 'inbound');
     const lastInboundAt = lastInbound?.createdAt.toISOString();
 
+    const courseRow = leadRow.courses as { id: string; name: string; course_type: CourseType } | null;
+
     const thread: InboxThread = {
       lead,
+      course: courseRow ? { id: courseRow.id, name: courseRow.name, courseType: courseRow.course_type } : undefined,
+      group: !courseRow ? 'personal' : courseRow.course_type === 'workshop' ? 'workshop' : 'course',
       messages,
       lastInboundAt,
       windowOpen: !!lastInbound && Date.now() - lastInbound.createdAt.getTime() < WINDOW_MS,

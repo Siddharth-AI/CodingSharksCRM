@@ -126,7 +126,8 @@ export class WhatsAppService {
     options: Pick<SendOptions, 'retryCount' | 'existingMessageId'> = {}
   ): Promise<SendResult> {
     const values = getTemplateVariableValues(template, lead, course, additionalVariables);
-    const { content } = processTemplate(template, lead, course, additionalVariables);
+    const content = processTemplate(template, lead, course, additionalVariables).content
+      .replace(/\{\{(\d+)\}\}/g, (m, n: string) => values[n] ?? m);
     return this.sendTemplateMessage(lead.mobile, template, values, content, { ...options, leadId: lead.id });
   }
 

@@ -181,6 +181,13 @@ export const EditTemplateModal: React.FC<Props> = ({ isOpen, onClose, template, 
             onChange={e => setCourseId(e.target.value)}
           />
 
+          {template.metaStatus === 'APPROVED' && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Approved on WhatsApp. Changing the course, name or type is safe; changing the message text or media
+              needs WhatsApp approval again and the template cannot be sent until it is resubmitted.
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

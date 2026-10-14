@@ -226,8 +226,11 @@ export async function PUT(
       updateObject.media_video_url = updateData.mediaVideoUrl || null;
     }
 
+    const normalize = (text: string | null) =>
+      (text || '').replace(/\r\n/g, '\n').split('\n').map(line => line.trimEnd()).join('\n').trim();
+
     const metaContentChanged =
-      (updateObject.content !== undefined && updateObject.content !== existingTemplate.content) ||
+      (updateObject.content !== undefined && normalize(updateObject.content) !== normalize(existingTemplate.content)) ||
       (updateObject.media_image_url !== undefined && updateObject.media_image_url !== existingTemplate.media_image_url) ||
       (updateObject.media_video_url !== undefined && updateObject.media_video_url !== existingTemplate.media_video_url);
 

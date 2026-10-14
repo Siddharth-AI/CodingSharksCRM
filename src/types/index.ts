@@ -51,6 +51,17 @@ export interface MessageTemplate {
 
 export type MetaTemplateCategory = 'MARKETING' | 'UTILITY';
 
+export interface TemplateFieldValue {
+  name: string;
+  value: string;
+  auto: boolean;
+}
+
+export interface TemplateValuesResponse {
+  fields: TemplateFieldValue[];
+  content: string;
+}
+
 export type MessageDirection = 'inbound' | 'outbound';
 
 export interface WhatsAppMessage {
@@ -76,10 +87,16 @@ export interface WhatsAppMessage {
   isRead?: boolean;
 }
 
+export type InboxGroup = 'course' | 'workshop' | 'personal';
+
 export interface InboxConversation {
   leadId: string;
   name: string;
   mobile: string;
+  group: InboxGroup;
+  courseName?: string;
+  stage: LeadStage;
+  source: LeadSource;
   lastMessage: string;
   lastMessageType: string;
   lastDirection: MessageDirection;
@@ -92,6 +109,8 @@ export interface InboxConversation {
 
 export interface InboxThread {
   lead: Lead;
+  course?: { id: string; name: string; courseType: CourseType };
+  group: InboxGroup;
   messages: WhatsAppMessage[];
   lastInboundAt?: string;
   windowOpen: boolean;
