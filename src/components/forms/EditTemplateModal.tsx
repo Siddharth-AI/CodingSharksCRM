@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, Button, Select } from '@/components/ui';
 import { MessageTemplate, TemplateType } from '@/types';
-import { useUpdateTemplateMutation } from '@/store/api';
+import { useUpdateTemplateMutation, useGetCoursesQuery } from '@/store/api';
 import { useAppSelector } from '@/hooks/redux';
 import { selectCourses } from '@/store/slices/coursesSlice';
 import { MediaUpload } from './MediaUpload';
@@ -72,7 +72,10 @@ interface Props {
 
 export const EditTemplateModal: React.FC<Props> = ({ isOpen, onClose, template, onSuccess }) => {
   const [updateTemplate, { isLoading }] = useUpdateTemplateMutation();
-  const courses = useAppSelector(selectCourses);
+  const storeCourses = useAppSelector(selectCourses);
+  const { data: coursesData } = useGetCoursesQuery();
+  const courses = coursesData?.data?.length ? coursesData.data : storeCourses;
+  const [courseId, setCourseId] = useState<string>(template.courseId || '');
 
   const [formData, setFormData] = useState({
     name:     template.name,
@@ -97,6 +100,7 @@ export const EditTemplateModal: React.FC<Props> = ({ isOpen, onClose, template, 
         isActive: template.isActive,
       });
       setVariableDefaults(template.variableDefaults || {});
+      setCourseId(template.courseId || '');
       setMediaImageUrl(template.mediaImageUrl);
       setMediaVideoUrl(template.mediaVideoUrl);
       setErrors({});
@@ -127,6 +131,7 @@ export const EditTemplateModal: React.FC<Props> = ({ isOpen, onClose, template, 
       await updateTemplate({
         id: template.id,
         data: {
+          courseId:         courseId || null,
           name:             formData.name,
           content:          formData.content,
           type:             formData.type,
@@ -154,8 +159,6 @@ export const EditTemplateModal: React.FC<Props> = ({ isOpen, onClose, template, 
     });
   }, [formData.content, variableDefaults]);
 
-  const selectedCourse = courses.find(c => c.id === template.courseId);
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Edit Message Template" size="xl">
       <form onSubmit={handleSubmit} className="flex gap-4 h-full">
@@ -168,12 +171,15 @@ export const EditTemplateModal: React.FC<Props> = ({ isOpen, onClose, template, 
             </div>
           )}
 
-          {/* Course info (read-only) */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-            <p className="text-sm text-blue-700">
-              <strong>Course:</strong> {selectedCourse?.name || template.courseId}
-            </p>
-          </div>
+          <Select
+            label="Course"
+            options={[
+              { value: '', label: 'No course' },
+              ...courses.map(c => ({ value: c.id, label: c.name })),
+            ]}
+            value={courseId}
+            onChange={e => setCourseId(e.target.value)}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div>

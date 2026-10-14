@@ -220,6 +220,7 @@ export interface CreateMessageTemplateRequest {
 }
 
 export interface UpdateMessageTemplateRequest {
+  courseId?: string | null;
   name?: string;
   content?: string;
   variables?: string[];

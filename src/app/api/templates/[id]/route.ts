@@ -186,6 +186,20 @@ export async function PUT(
       updated_at: new Date().toISOString(),
     };
 
+    if (updateData.courseId !== undefined && updateData.courseId !== existingTemplate.course_id) {
+      if (updateData.courseId) {
+        const { data: course } = await supabaseAdmin
+          .from('courses')
+          .select('id')
+          .eq('id', updateData.courseId)
+          .maybeSingle();
+        if (!course) {
+          return NextResponse.json({ success: false, error: 'Course not found' }, { status: 400 });
+        }
+      }
+      updateObject.course_id = updateData.courseId;
+    }
+
     if (updateData.name !== undefined) {
       updateObject.name = updateData.name;
     }

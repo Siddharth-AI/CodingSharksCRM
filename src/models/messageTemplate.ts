@@ -32,6 +32,7 @@ export const createMessageTemplateSchema = Joi.object({
 });
 
 export const updateMessageTemplateSchema = Joi.object({
+  courseId:         Joi.string().uuid().allow(null),
   name:             Joi.string().min(3).max(100),
   type:             Joi.string().valid(...Object.values(TemplateType)),
   content:          Joi.string().min(10).max(4096),
