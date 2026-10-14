@@ -35,7 +35,7 @@ const dayLabel = (d: Date) => {
 
 export const ChatThread: React.FC<ChatThreadProps> = ({ leadId, onBack }) => {
   const { data, isLoading, isError } = useGetConversationQuery(leadId, { pollingInterval: THREAD_POLL_MS });
-  const { data: templatesData } = useGetTemplatesQuery({ page: 1, limit: 100 });
+  const { data: templatesData } = useGetTemplatesQuery({ page: 1, limit: 100 }, { refetchOnMountOrArgChange: 30 });
   const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
 
   const thread = data?.data;

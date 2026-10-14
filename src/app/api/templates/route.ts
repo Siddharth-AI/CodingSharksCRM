@@ -52,7 +52,16 @@ export async function GET(request: NextRequest) {
         media_video_url,
         is_active,
         created_at,
-        updated_at
+        updated_at,
+        meta_template_id,
+        meta_name,
+        meta_language,
+        meta_category,
+        meta_status,
+        meta_rejection_reason,
+        meta_param_names,
+        meta_header_format,
+        meta_submitted_at
       `, { count: 'exact' });
 
     // Apply filters

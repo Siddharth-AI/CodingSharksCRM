@@ -44,7 +44,7 @@ type FormData = CreateMessageRequest & {
 export default function SendMessageModal({ isOpen, onClose, onSuccess }: SendMessageModalProps) {
   const [sendMessage, { isLoading }] = useSendMessageMutation();
   const { data: leadsData }     = useGetLeadsQuery({ page: 1, limit: 100 });
-  const { data: templatesData } = useGetTemplatesQuery({ page: 1, limit: 100 });
+  const { data: templatesData } = useGetTemplatesQuery({ page: 1, limit: 100 }, { refetchOnMountOrArgChange: 30 });
   const { data: coursesData }   = useGetCoursesQuery();
 
   const [formData, setFormData] = useState<FormData>({
